@@ -482,6 +482,7 @@ public class MonitorService extends Service implements SensorEventListener {
         Icon icon = Icon.createWithResource(this, R.drawable.ic_stat);
         Notification.Builder b = new Notification.Builder(this, CH_MONITOR)
                 .setSmallIcon(R.drawable.ic_stat)
+                .setColor(0xFF1A8661)
                 .setContentTitle(title)
                 .setContentText(text)
                 .setOngoing(true)
@@ -523,6 +524,7 @@ public class MonitorService extends Service implements SensorEventListener {
             String body = "带着手机走一走（约 " + tracker.breakSteps + " 步），或离开座位几分钟，就会重新计时。";
             Notification.Builder b = new Notification.Builder(this, CH_REMIND)
                     .setSmallIcon(R.drawable.ic_stat)
+                    .setColor(0xFF1A8661)
                     .setContentTitle(title)
                     .setContentText(body)
                     .setStyle(new Notification.BigTextStyle().bigText(body))
