@@ -14,7 +14,8 @@ src/com/qilai/zouzou/
   SitTracker.java          久坐判断状态机（纯 Java，不依赖 Android，可在电脑上测试）
   MonitorService.java      前台服务：计步、定时判断、摄像头调度、通知和振动
   FaceChecker.java         打开前置摄像头取几帧判断有没有人脸，随后立即关闭
-  MainActivity.java        界面（纯代码布局）：状态、设置、今日统计、桌面常亮模式
+  MainActivity.java        界面（纯代码布局）：底部三页（监测 / 今天 / 设置）、桌面常亮模式，跟随系统深色模式
+  Ui.java                  自绘控件：配色、进度环、开关、线条图标
   Prefs.java               设置和当天统计（SharedPreferences）
 res/                       图标（由 tools/make_icons.py 生成）
 test/SitTrackerTest.java   判断逻辑的场景测试（32 项）
