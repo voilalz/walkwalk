@@ -1,0 +1,11 @@
+# 构建产物
+build/
+*.apk
+
+# 签名密钥，切勿提交
+keystore/
+*.p12
+*.jks
+*.keystore
+
+__pycache__/
