@@ -68,3 +68,7 @@ java -cp /tmp/t SitTrackerTest
 - 离开座位时既没带手机、也没开摄像头，App 会以为你还坐着（可以点“我刚活动过”）
 - 站着办公但不走动时，计步无法区分站和坐
 - 国产手机需要手动允许自启动、后台运行、电池策略“不限制”，否则可能被系统关闭
+
+## 发布新版
+
+在 GitHub 上打开 Actions → “发布 APK” → Run workflow，填版本号（如 `0.2`）和版本代码（整数，每次加 1）。工作流用官方 Android SDK 打包签名，自动建 Release 并上传 APK；`docs/release-notes/v版本号.md` 存在时会作为发布说明。签名密钥放在仓库 Secrets（见 `.github/workflows/release.yml` 开头的说明），没配置时用临时密钥，打出的包以后不能覆盖升级。
