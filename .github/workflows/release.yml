@@ -1,0 +1,105 @@
+# 手动发布新版：Actions → 发布 APK → Run workflow，填版本号
+# 用 Google 官方 Android SDK 打包（aapt2 → javac → d8 → 对齐 → apksigner），然后建 Release 并上传 APK
+#
+# 签名密钥放在仓库 Secrets 里，每个版本用同一个密钥才能覆盖升级：
+#   SIGNING_KEY_P12_BASE64  PKCS12 密钥文件的 base64
+#   SIGNING_KEY_PASSWORD    密钥密码
+#   SIGNING_KEY_ALIAS       别名（不填默认 zouzou）
+# 没配置时会临时生成一个密钥，这样打出的包以后无法覆盖升级。
+name: 发布 APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: 版本号，例如 0.2（会建 tag v0.2）
+        required: true
+      version_code:
+        description: 整数版本代码，每次发布都要比上次大
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      VERSION_NAME: ${{ inputs.version_name }}
+      VERSION_CODE: ${{ inputs.version_code }}
+      BUILD_TOOLS: 34.0.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: 安装 Android SDK 组件
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-34" "build-tools;$BUILD_TOOLS" > /dev/null
+          echo "BT=$ANDROID_HOME/build-tools/$BUILD_TOOLS" >> "$GITHUB_ENV"
+          echo "ANDROID_JAR=$ANDROID_HOME/platforms/android-34/android.jar" >> "$GITHUB_ENV"
+
+      - name: 运行判断逻辑测试
+        run: |
+          javac -encoding UTF-8 -d build/test src/com/qilai/zouzou/SitTracker.java test/SitTrackerTest.java
+          java -cp build/test SitTrackerTest
+
+      - name: 打包
+        run: |
+          set -euo pipefail
+          OUT=build/apk
+          mkdir -p "$OUT/gen" "$OUT/classes" "$OUT/dex"
+          "$BT/aapt2" compile --dir res -o "$OUT/res.zip"
+          "$BT/aapt2" link -o "$OUT/res.apk" -I "$ANDROID_JAR" \
+            --manifest AndroidManifest.xml --java "$OUT/gen" "$OUT/res.zip" \
+            --min-sdk-version 26 --target-sdk-version 34 \
+            --version-code "$VERSION_CODE" --version-name "$VERSION_NAME"
+          javac -encoding UTF-8 -source 8 -target 8 -Xlint:-options -nowarn \
+            -bootclasspath "$ANDROID_JAR" -d "$OUT/classes" \
+            $(find src "$OUT/gen" -name '*.java')
+          "$BT/d8" --release --min-api 26 --lib "$ANDROID_JAR" --output "$OUT/dex" \
+            $(find "$OUT/classes" -name '*.class')
+          python3 tools/pack_apk.py "$OUT/res.apk" "$OUT/dex/classes.dex" "$OUT/unsigned.apk"
+
+      - name: 签名
+        env:
+          KEY_B64: ${{ secrets.SIGNING_KEY_P12_BASE64 }}
+          KEY_PASS: ${{ secrets.SIGNING_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          KS="$RUNNER_TEMP/release.p12"
+          ALIAS=${KEY_ALIAS:-zouzou}
+          if [ -n "$KEY_B64" ]; then
+            echo "$KEY_B64" | base64 -d > "$KS"
+          else
+            echo "::warning::没有配置签名密钥 Secrets，这次用临时密钥签名，以后的版本无法覆盖升级它"
+            KEY_PASS=$(openssl rand -hex 16)
+            keytool -genkeypair -keystore "$KS" -storetype PKCS12 -storepass "$KEY_PASS" \
+              -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Qilai Zouzou, O=Personal"
+          fi
+          APK="build/qilai-zouzou-v$VERSION_NAME.apk"
+          KS_PASS="$KEY_PASS" "$BT/apksigner" sign --ks "$KS" --ks-type PKCS12 --ks-key-alias "$ALIAS" \
+            --ks-pass env:KS_PASS --out "$APK" build/apk/unsigned.apk
+          "$BT/apksigner" verify --verbose "$APK"
+          rm -f "$KS"
+          echo "APK=$APK" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qilai-zouzou-v${{ inputs.version_name }}
+          path: ${{ env.APK }}
+
+      - name: 发布 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          NOTES=build/notes.md
+          if [ -f "docs/release-notes/v$VERSION_NAME.md" ]; then cp "docs/release-notes/v$VERSION_NAME.md" "$NOTES"; else : > "$NOTES"; fi
+          printf '\nSHA-256: %s\n' "$(sha256sum "$APK" | cut -d' ' -f1)" >> "$NOTES"
+          gh release create "v$VERSION_NAME" "$APK" --target "$GITHUB_SHA" \
+            --title "起来走走 v$VERSION_NAME" --notes-file "$NOTES"
